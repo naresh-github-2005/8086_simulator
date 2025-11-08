@@ -1,0 +1,17 @@
+; Generate Fibonacci sequence
+
+start:
+  MOV CX, 8           ; Generate 11 more (after first two)
+  DEC CX
+  DEC CX
+  MOV AX, 0            ; F(0) = 0
+  MOV BX, 1            ; F(1) = 1
+  
+fib_loop:
+  MOV DX, BX           ; Save F(n-1)
+  ADD BX, AX           ; F(n) = F(n-1) + F(n-2)
+  MOV AX, DX           ; Update F(n-2) = old F(n-1)
+  LOOP fib_loop        ; Repeat
+  
+  ; Last Fibonacci in BX
+  HLT

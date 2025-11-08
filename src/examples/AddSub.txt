@@ -1,0 +1,14 @@
+start:
+  MOV AX, 0x12       ; First number
+  MOV BX, 0x56       ; Second number
+  
+  ; Addition
+  ADD AX, BX           ; AX = AX + BX
+  MOV CX, AX           ; Save result in CX
+  
+  ; Subtraction
+  MOV AX, 0x5678       ; Load first number again
+  SUB AX, 0x1234       ; AX = AX - 1234H
+  MOV DX, AX           ; Save result in DX
+  
+  HLT                  ; Stop execution

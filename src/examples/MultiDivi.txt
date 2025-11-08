@@ -1,0 +1,15 @@
+
+start:
+  ; Multiplication: 5*3
+  MOV AX, 0x5           ; Multiplicand
+  MOV BX, 0x3           ; Multiplier
+  MUL BX               ; AX = AX × BX
+  MOV CX, AX           ; Save product (15)
+  
+  ; Division: 13 ÷ 5
+  MOV AX, 0xD          ; Dividend
+  MOV DX, 0x0           ; Clear DX
+  MOV BX, 0x5            ; Divisor
+  DIV BX               ; AX = Quotient (2), DX = Remainder (3)
+  
+  HLT

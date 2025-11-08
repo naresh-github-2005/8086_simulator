@@ -1,0 +1,15 @@
+; Calculate average of 5 numbers
+
+start:
+  MOV AX, 10           ; First number
+  ADD AX, 20           ; Add second
+  ADD AX, 30           ; Add third
+  ADD AX, 40           ; Add fourth
+  ADD AX, 50           ; Add fifth
+  
+  ; Sum is 150 in AX
+  MOV BX, 5            ; Divisor
+  MOV DX, 0            ; Clear DX
+  DIV BX               ; AX = Average (30)
+  
+  HLT

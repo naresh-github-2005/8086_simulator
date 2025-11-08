@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, SkipForward, RotateCcw, Sun, Moon, Info } from 'lucide-react';
+import { Play, Square, SkipForward, RotateCcw, Sun, Moon } from 'lucide-react';
 
-// Complete 8086 CPU Emulator with Memory Addressing
+// Complete 8086 CPU Emulator
 class CPU8086 {
   constructor() {
     this.reset();
@@ -152,28 +152,6 @@ class CPU8086 {
     }
   }
 
-  // Get effective address based on ModR/M
-  getEffectiveAddress(modrm) {
-    const mod = (modrm >> 6) & 3;
-    const rm = modrm & 7;
-    
-    if (mod === 3) return null; // Register mode
-    
-    let offset = 0;
-    switch(rm) {
-      case 0: offset = (this.BX + this.SI) & 0xFFFF; break;
-      case 1: offset = (this.BX + this.DI) & 0xFFFF; break;
-      case 2: offset = (this.BP + this.SI) & 0xFFFF; break;
-      case 3: offset = (this.BP + this.DI) & 0xFFFF; break;
-      case 4: offset = this.SI; break;
-      case 5: offset = this.DI; break;
-      case 6: offset = this.BP; break;
-      case 7: offset = this.BX; break;
-    }
-    
-    return offset;
-  }
-
   interrupt(intNum) {
     if (intNum === 0x10) {
       const ah = this.getAH();
@@ -237,45 +215,24 @@ class CPU8086 {
       return null;
     }
 
-    // MOV reg/mem (88-8B) - SUPPORTS MEMORY ADDRESSING
+    // MOV reg/mem (88-8B)
     if (opcode >= 0x88 && opcode <= 0x8B) {
       const modrm = this.readByte(this.CS, this.IP);
       this.IP = (this.IP + 1) & 0xFFFF;
       
-      const d = (opcode >> 1) & 1; // Direction
-      const w = opcode & 1; // Word/byte
+      const d = (opcode >> 1) & 1;
+      const w = opcode & 1;
       const mod = (modrm >> 6) & 3;
       const reg = (modrm >> 3) & 7;
       const rm = modrm & 7;
       
-      if (mod === 3) { // Register to register
+      if (mod === 3) {
         if (w) {
           const val = d ? this.getReg16(rm) : this.getReg16(reg);
           d ? this.setReg16(reg, val) : this.setReg16(rm, val);
         } else {
           const val = d ? this.getReg8(rm) : this.getReg8(reg);
           d ? this.setReg8(reg, val) : this.setReg8(rm, val);
-        }
-      } else { // Memory access
-        const offset = this.getEffectiveAddress(modrm);
-        const segment = (rm === 2 || rm === 3 || rm === 6) ? this.SS : this.DS;
-        
-        if (d === 1) { // From memory to register
-          if (w) {
-            const value = this.readWord(segment, offset);
-            this.setReg16(reg, value);
-          } else {
-            const value = this.readByte(segment, offset);
-            this.setReg8(reg, value);
-          }
-        } else { // From register to memory
-          if (w) {
-            const value = this.getReg16(reg);
-            this.writeWord(segment, offset, value);
-          } else {
-            const value = this.getReg8(reg);
-            this.writeByte(segment, offset, value);
-          }
         }
       }
       return null;
@@ -300,7 +257,7 @@ class CPU8086 {
       return null;
     }
 
-    // Arithmetic operations
+    // ADD, SUB, CMP, AND, OR, XOR (00-3D)
     const arithmeticOps = {
       0x00: 'add', 0x01: 'add', 0x04: 'add', 0x05: 'add',
       0x10: 'adc', 0x11: 'adc', 0x14: 'adc', 0x15: 'adc',
@@ -314,9 +271,11 @@ class CPU8086 {
 
     if (arithmeticOps[opcode]) {
       const op = arithmeticOps[opcode];
+      const w = opcode & 1;
       
       if (opcode === 0x04 || opcode === 0x0C || opcode === 0x14 || opcode === 0x1C || 
           opcode === 0x24 || opcode === 0x2C || opcode === 0x34 || opcode === 0x3C) {
+        // AL, imm8
         const imm = this.readByte(this.CS, this.IP);
         this.IP = (this.IP + 1) & 0xFFFF;
         const val1 = this.getAL();
@@ -336,6 +295,7 @@ class CPU8086 {
         if (op !== 'cmp') this.setAL(result);
       } else if (opcode === 0x05 || opcode === 0x0D || opcode === 0x15 || opcode === 0x1D || 
                  opcode === 0x25 || opcode === 0x2D || opcode === 0x35 || opcode === 0x3D) {
+        // AX, imm16
         const imm = this.readWord(this.CS, this.IP);
         this.IP = (this.IP + 2) & 0xFFFF;
         const val1 = this.AX;
@@ -354,6 +314,7 @@ class CPU8086 {
         this.updateFlags(result, 16, op, val1, imm);
         if (op !== 'cmp') this.AX = result;
       } else {
+        // reg, reg
         const modrm = this.readByte(this.CS, this.IP);
         this.IP = (this.IP + 1) & 0xFFFF;
         
@@ -361,22 +322,24 @@ class CPU8086 {
           const reg1 = (modrm >> 3) & 7;
           const reg2 = modrm & 7;
           
-          const val1 = this.getReg16(reg2);
-          const val2 = this.getReg16(reg1);
-          let result;
-          
-          if (op === 'add') result = val1 + val2;
-          else if (op === 'adc') result = val1 + val2 + this.flags.CF;
-          else if (op === 'sub') result = val1 - val2;
-          else if (op === 'sbb') result = val1 - val2 - this.flags.CF;
-          else if (op === 'cmp') result = val1 - val2;
-          else if (op === 'and') result = val1 & val2;
-          else if (op === 'or') result = val1 | val2;
-          else if (op === 'xor') result = val1 ^ val2;
-          
-          result = result & 0xFFFF;
-          this.updateFlags(result, 16, op, val1, val2);
-          if (op !== 'cmp') this.setReg16(reg2, result);
+          if (w) {
+            const val1 = this.getReg16(reg2);
+            const val2 = this.getReg16(reg1);
+            let result;
+            
+            if (op === 'add') result = val1 + val2;
+            else if (op === 'adc') result = val1 + val2 + this.flags.CF;
+            else if (op === 'sub') result = val1 - val2;
+            else if (op === 'sbb') result = val1 - val2 - this.flags.CF;
+            else if (op === 'cmp') result = val1 - val2;
+            else if (op === 'and') result = val1 & val2;
+            else if (op === 'or') result = val1 | val2;
+            else if (op === 'xor') result = val1 ^ val2;
+            
+            result = result & 0xFFFF;
+            this.updateFlags(result, 16, op, val1, val2);
+            if (op !== 'cmp') this.setReg16(reg2, result);
+          }
         }
       }
       return null;
@@ -398,7 +361,7 @@ class CPU8086 {
           imm = this.readByte(this.CS, this.IP);
           this.IP = (this.IP + 1) & 0xFFFF;
           if (opcode === 0x83 && (imm & 0x80)) {
-            imm = imm | 0xFF00;
+            imm = imm | 0xFF00; // Sign extend
           }
         }
         
@@ -406,16 +369,16 @@ class CPU8086 {
         let result;
         let op;
         
-        if (operation === 7) {
+        if (operation === 7) { // CMP
           result = (val - imm) & 0xFFFF;
           op = 'cmp';
           this.updateFlags(result, 16, op, val, imm);
-        } else if (operation === 0) {
+        } else if (operation === 0) { // ADD
           result = (val + imm) & 0xFFFF;
           op = 'add';
           this.updateFlags(result, 16, op, val, imm);
           this.setReg16(reg, result);
-        } else if (operation === 5) {
+        } else if (operation === 5) { // SUB
           result = (val - imm) & 0xFFFF;
           op = 'sub';
           this.updateFlags(result, 16, op, val, imm);
@@ -425,7 +388,7 @@ class CPU8086 {
       return null;
     }
 
-    // TEST (85, A9)
+    // TEST (84-85, A8-A9)
     if (opcode === 0x85 || opcode === 0xA9) {
       if (opcode === 0x85) {
         const modrm = this.readByte(this.CS, this.IP);
@@ -434,7 +397,9 @@ class CPU8086 {
         if ((modrm >> 6) === 3) {
           const reg1 = (modrm >> 3) & 7;
           const reg2 = modrm & 7;
-          const result = this.getReg16(reg2) & this.getReg16(reg1);
+          const val1 = this.getReg16(reg2);
+          const val2 = this.getReg16(reg1);
+          const result = val1 & val2;
           this.updateFlags(result, 16);
           this.flags.CF = 0;
           this.flags.OF = 0;
@@ -461,9 +426,11 @@ class CPU8086 {
       if ((modrm >> 6) === 3) {
         if (operation === 2) { // NOT
           if (w) {
-            this.setReg16(reg, (~this.getReg16(reg)) & 0xFFFF);
+            const val = this.getReg16(reg);
+            this.setReg16(reg, (~val) & 0xFFFF);
           } else {
-            this.setReg8(reg, (~this.getReg8(reg)) & 0xFF);
+            const val = this.getReg8(reg);
+            this.setReg8(reg, (~val) & 0xFF);
           }
         } else if (operation === 3) { // NEG
           if (w) {
@@ -474,6 +441,7 @@ class CPU8086 {
           }
         } else if (operation === 4) { // MUL
           if (w) {
+            // 16-bit multiply: AX * reg → DX:AX
             const val = this.getReg16(reg);
             const result = this.AX * val;
             this.AX = result & 0xFFFF;
@@ -481,6 +449,7 @@ class CPU8086 {
             this.flags.CF = this.DX !== 0 ? 1 : 0;
             this.flags.OF = this.flags.CF;
           } else {
+            // 8-bit multiply: AL * reg8 → AX
             const val = this.getReg8(reg);
             const result = this.getAL() * val;
             this.AX = result & 0xFFFF;
@@ -519,7 +488,7 @@ class CPU8086 {
       return null;
     }
 
-    // DEC/INC 8-bit register (FE)
+    // DEC 8-bit register (FE)
     if (opcode === 0xFE) {
       const modrm = this.readByte(this.CS, this.IP);
       this.IP = (this.IP + 1) & 0xFFFF;
@@ -575,22 +544,22 @@ class CPU8086 {
       
       let jump = false;
       switch(opcode) {
-        case 0x70: jump = this.flags.OF === 1; break;
-        case 0x71: jump = this.flags.OF === 0; break;
-        case 0x72: jump = this.flags.CF === 1; break;
-        case 0x73: jump = this.flags.CF === 0; break;
-        case 0x74: jump = this.flags.ZF === 1; break;
-        case 0x75: jump = this.flags.ZF === 0; break;
-        case 0x76: jump = this.flags.CF === 1 || this.flags.ZF === 1; break;
-        case 0x77: jump = this.flags.CF === 0 && this.flags.ZF === 0; break;
-        case 0x78: jump = this.flags.SF === 1; break;
-        case 0x79: jump = this.flags.SF === 0; break;
-        case 0x7A: jump = this.flags.PF === 1; break;
-        case 0x7B: jump = this.flags.PF === 0; break;
-        case 0x7C: jump = this.flags.SF !== this.flags.OF; break;
-        case 0x7D: jump = this.flags.SF === this.flags.OF; break;
-        case 0x7E: jump = this.flags.ZF === 1 || this.flags.SF !== this.flags.OF; break;
-        case 0x7F: jump = this.flags.ZF === 0 && this.flags.SF === this.flags.OF; break;
+        case 0x70: jump = this.flags.OF === 1; break; // JO
+        case 0x71: jump = this.flags.OF === 0; break; // JNO
+        case 0x72: jump = this.flags.CF === 1; break; // JB/JC
+        case 0x73: jump = this.flags.CF === 0; break; // JNB/JNC
+        case 0x74: jump = this.flags.ZF === 1; break; // JE/JZ
+        case 0x75: jump = this.flags.ZF === 0; break; // JNE/JNZ
+        case 0x76: jump = this.flags.CF === 1 || this.flags.ZF === 1; break; // JBE
+        case 0x77: jump = this.flags.CF === 0 && this.flags.ZF === 0; break; // JA
+        case 0x78: jump = this.flags.SF === 1; break; // JS
+        case 0x79: jump = this.flags.SF === 0; break; // JNS
+        case 0x7A: jump = this.flags.PF === 1; break; // JP
+        case 0x7B: jump = this.flags.PF === 0; break; // JNP
+        case 0x7C: jump = this.flags.SF !== this.flags.OF; break; // JL
+        case 0x7D: jump = this.flags.SF === this.flags.OF; break; // JGE
+        case 0x7E: jump = this.flags.ZF === 1 || this.flags.SF !== this.flags.OF; break; // JLE
+        case 0x7F: jump = this.flags.ZF === 0 && this.flags.SF === this.flags.OF; break; // JG
       }
       
       if (jump) {
@@ -617,17 +586,44 @@ class CPU8086 {
       this.CX = (this.CX - 1) & 0xFFFF;
       
       let jump = false;
-      if (opcode === 0xE2) {
+      if (opcode === 0xE2) { // LOOP
         jump = this.CX !== 0;
-      } else if (opcode === 0xE1) {
+      } else if (opcode === 0xE1) { // LOOPE/LOOPZ
         jump = this.CX !== 0 && this.flags.ZF === 1;
-      } else if (opcode === 0xE0) {
+      } else if (opcode === 0xE0) { // LOOPNE/LOOPNZ
         jump = this.CX !== 0 && this.flags.ZF === 0;
       }
       
       if (jump) {
         this.IP = (this.IP + signedOffset) & 0xFFFF;
       }
+      return null;
+    }
+
+    // CALL/RET (E8, C3, C2)
+    if (opcode === 0xE8) {
+      const offset = this.readWord(this.CS, this.IP);
+      this.IP = (this.IP + 2) & 0xFFFF;
+      const signedOffset = offset > 32767 ? offset - 65536 : offset;
+      
+      this.SP = (this.SP - 2) & 0xFFFF;
+      this.writeWord(this.SS, this.SP, this.IP);
+      this.IP = (this.IP + signedOffset) & 0xFFFF;
+      return null;
+    }
+
+    if (opcode === 0xC3) {
+      this.IP = this.readWord(this.SS, this.SP);
+      this.SP = (this.SP + 2) & 0xFFFF;
+      return null;
+    }
+
+    if (opcode === 0xC2) {
+      const popBytes = this.readWord(this.CS, this.IP);
+      this.IP = (this.IP + 2) & 0xFFFF;
+      const retAddr = this.readWord(this.SS, this.SP);
+      this.SP = (this.SP + 2 + popBytes) & 0xFFFF;
+      this.IP = retAddr;
       return null;
     }
 
@@ -654,13 +650,15 @@ class CPU8086 {
     }
     
     // NOP
-    if (opcode === 0x90) return null;
+    if (opcode === 0x90) {
+      return null;
+    }
     
     return null;
   }
 }
 
-// Assembler with Memory Addressing Support
+// Assembler
 class Assembler {
   constructor() {
     this.labels = {};
@@ -723,56 +721,123 @@ class Assembler {
     const op = parts[0];
 
     if (op === 'MOV') {
+      // Check for 8-bit register with immediate
       if (parts.length >= 3) {
         const dest = parts[1];
         const src = parts[2];
         
-        // MOV reg, [SI/DI/BX/BP]
-        if (src.startsWith('[') && src.endsWith(']')) {
-          return 2; // opcode + modrm
-        }
-        
-        // MOV [SI/DI/BX/BP], reg
-        if (dest.startsWith('[') && dest.endsWith(']')) {
-          return 2; // opcode + modrm
-        }
-        
-        // MOV reg8, imm8
+        // MOV reg8, imm8 - 2 bytes
         if (['AL', 'AH', 'BL', 'BH', 'CL', 'CH', 'DL', 'DH'].includes(dest)) {
-          if (src.startsWith('0X') || /^\d+$/.test(src)) return 2;
+          if (src.startsWith('0X') || /^\d+$/.test(src)) {
+            return 2;
+          }
         }
         
-        // MOV reg16, imm16
+        // MOV reg16, imm16 - 3 bytes
         if (['AX', 'BX', 'CX', 'DX', 'SI', 'DI', 'BP', 'SP'].includes(dest)) {
-          if (src.startsWith('0X') || /^\d+$/.test(src)) return 3;
+          if (src.startsWith('0X') || /^\d+$/.test(src)) {
+            return 3;
+          }
         }
         
+        // MOV reg, reg - 2 bytes
         return 2;
       }
       return 2;
     }
     
-    if (['ADD', 'SUB', 'CMP', 'AND', 'OR', 'XOR'].includes(op)) {
-      return parts.length >= 3 && (parts[2].startsWith('0X') || /^\d+$/.test(parts[2])) ? 3 : 2;
+    if (['ADD', 'ADC', 'SUB', 'SBB', 'CMP', 'AND', 'OR', 'XOR'].includes(op)) {
+      if (parts.length >= 3) {
+        const dest = parts[1];
+        const src = parts[2];
+        
+        // Operation with AX/AL and immediate
+        if (dest === 'AX' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+          return 3; // opcode + 2 bytes immediate
+        }
+        if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+          return 2; // opcode + 1 byte immediate
+        }
+        
+        // Operation with other registers and immediate
+        if (['BX', 'CX', 'DX', 'SI', 'DI', 'BP', 'SP'].includes(dest)) {
+          if (src.startsWith('0X') || /^\d+$/.test(src)) {
+            const value = parseInt(src.startsWith('0X') ? src.substring(2) : src, src.startsWith('0X') ? 16 : 10);
+            if (value >= 0 && value <= 127) {
+              return 3; // opcode 83 + modrm + 1 byte imm
+            }
+            return 4; // opcode 81 + modrm + 2 bytes imm
+          }
+        }
+        
+        // Register to register
+        return 2; // opcode + modrm
+      }
+      return 2;
     }
     
-    if (['JMP', 'JE', 'JNE', 'JZ', 'JNZ', 'JG', 'JL', 'JGE', 'JLE', 'JB', 'JA',
-         'LOOP', 'LOOPE', 'LOOPNE'].includes(op)) return 2;
+    if (['JMP', 'JE', 'JNE', 'JZ', 'JNZ', 'JG', 'JL', 'JGE', 'JLE', 'JB', 'JA', 'JBE', 'JAE',
+         'JC', 'JNC', 'JO', 'JNO', 'JS', 'JNS', 'JP', 'JNP', 'LOOP', 'LOOPE', 'LOOPNE', 'LOOPZ', 'LOOPNZ'].includes(op)) {
+      return 2; // opcode + offset
+    }
     
-    if (['MUL', 'DIV', 'NOT', 'NEG'].includes(op)) return 2;
+    if (['MUL', 'DIV', 'NOT', 'NEG', 'SHL', 'SHR', 'SAL', 'SAR', 'ROL', 'ROR', 'RCL', 'RCR'].includes(op)) {
+      return 2; // opcode + modrm
+    }
     
     if (['INC', 'DEC'].includes(op)) {
       if (parts.length > 1) {
         const reg = parts[1];
-        if (['AL', 'AH', 'BL', 'BH', 'CL', 'CH', 'DL', 'DH'].includes(reg)) return 2;
+        // 8-bit register uses 2 bytes (FE + modrm)
+        if (['AL', 'AH', 'BL', 'BH', 'CL', 'CH', 'DL', 'DH'].includes(reg)) {
+          return 2;
+        }
+        // 16-bit register uses 1 byte (40-4F)
         return 1;
       }
       return 1;
     }
     
-    if (['PUSH', 'POP'].includes(op)) return 1;
-    if (['HLT', 'NOP'].includes(op)) return 1;
-    if (op === 'INT') return 2;
+    if (['PUSH', 'POP'].includes(op)) {
+      return 1; // single byte opcode
+    }
+    
+    if (['XCHG'].includes(op)) {
+      if (parts.length >= 3 && (parts[1] === 'AX' || parts[2] === 'AX')) {
+        return 1; // XCHG AX, reg is single byte
+      }
+      return 2; // XCHG reg, reg needs modrm
+    }
+    
+    if (['TEST'].includes(op)) {
+      if (parts.length >= 3) {
+        const dest = parts[1];
+        const src = parts[2];
+        if (dest === 'AX' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+          return 3; // A9 + 2 bytes
+        }
+        if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+          return 2; // A8 + 1 byte
+        }
+      }
+      return 2;
+    }
+    
+    if (['HLT', 'NOP', 'CLC', 'STC', 'CMC', 'CLD', 'STD', 'CLI', 'STI'].includes(op)) {
+      return 1;
+    }
+    
+    if (op === 'INT') {
+      return 2; // CD + interrupt number
+    }
+    
+    if (op === 'CALL') {
+      return 3; // E8 + 2 byte offset
+    }
+    
+    if (op === 'RET') {
+      return parts.length > 1 ? 3 : 1;
+    }
     
     return 1;
   }
@@ -796,8 +861,17 @@ class Assembler {
       'DIV': () => this.assembleDIV(parts.slice(1)),
       'INC': () => this.assembleINC(parts.slice(1)),
       'DEC': () => this.assembleDEC(parts.slice(1)),
+      'SHL': () => this.assembleSHL(parts.slice(1)),
+      'SAL': () => this.assembleSHL(parts.slice(1)),
+      'SHR': () => this.assembleSHR(parts.slice(1)),
+      'SAR': () => this.assembleSAR(parts.slice(1)),
+      'ROL': () => this.assembleROL(parts.slice(1)),
+      'ROR': () => this.assembleROR(parts.slice(1)),
+      'RCL': () => this.assembleRCL(parts.slice(1)),
+      'RCR': () => this.assembleRCR(parts.slice(1)),
       'PUSH': () => this.assemblePUSH(parts.slice(1)),
       'POP': () => this.assemblePOP(parts.slice(1)),
+      'XCHG': () => this.assembleXCHG(parts.slice(1)),
       'JMP': () => this.assembleJump(parts.slice(1), currentAddress, 0xEB),
       'JE': () => this.assembleJump(parts.slice(1), currentAddress, 0x74),
       'JZ': () => this.assembleJump(parts.slice(1), currentAddress, 0x74),
@@ -807,6 +881,16 @@ class Assembler {
       'JL': () => this.assembleJump(parts.slice(1), currentAddress, 0x7C),
       'JGE': () => this.assembleJump(parts.slice(1), currentAddress, 0x7D),
       'JLE': () => this.assembleJump(parts.slice(1), currentAddress, 0x7E),
+      'JA': () => this.assembleJump(parts.slice(1), currentAddress, 0x77),
+      'JB': () => this.assembleJump(parts.slice(1), currentAddress, 0x72),
+      'JAE': () => this.assembleJump(parts.slice(1), currentAddress, 0x73),
+      'JBE': () => this.assembleJump(parts.slice(1), currentAddress, 0x76),
+      'JC': () => this.assembleJump(parts.slice(1), currentAddress, 0x72),
+      'JNC': () => this.assembleJump(parts.slice(1), currentAddress, 0x73),
+      'JO': () => this.assembleJump(parts.slice(1), currentAddress, 0x70),
+      'JNO': () => this.assembleJump(parts.slice(1), currentAddress, 0x71),
+      'JS': () => this.assembleJump(parts.slice(1), currentAddress, 0x78),
+      'JNS': () => this.assembleJump(parts.slice(1), currentAddress, 0x79),
       'LOOP': () => this.assembleJump(parts.slice(1), currentAddress, 0xE2),
       'LOOPE': () => this.assembleJump(parts.slice(1), currentAddress, 0xE1),
       'LOOPZ': () => this.assembleJump(parts.slice(1), currentAddress, 0xE1),
@@ -815,6 +899,13 @@ class Assembler {
       'INT': () => [0xCD, this.parseNumber(parts[1])],
       'HLT': () => [0xF4],
       'NOP': () => [0x90],
+      'CLC': () => [0xF8],
+      'STC': () => [0xF9],
+      'CMC': () => [0xF5],
+      'CLD': () => [0xFC],
+      'STD': () => [0xFD],
+      'CLI': () => [0xFA],
+      'STI': () => [0xFB],
     };
 
     if (handlers[opcode]) {
@@ -829,38 +920,6 @@ class Assembler {
 
   assembleMOV(args) {
     const [dest, src] = args;
-
-    // MOV reg, [SI/DI/BX/BP] - Load from memory
-    if (src.startsWith('[') && src.endsWith(']')) {
-      const memReg = src.substring(1, src.length - 1);
-      const memRegMap = { SI: 4, DI: 5, BP: 6, BX: 7 };
-      
-      if (this.regMap16[dest] !== undefined && memRegMap[memReg] !== undefined) {
-        // MOV reg16, [mem] - opcode 8B, modrm = 00 reg rm
-        return [0x8B, (this.regMap16[dest] << 3) + memRegMap[memReg]];
-      }
-      
-      if (this.regMap8[dest] !== undefined && memRegMap[memReg] !== undefined) {
-        // MOV reg8, [mem] - opcode 8A
-        return [0x8A, (this.regMap8[dest] << 3) + memRegMap[memReg]];
-      }
-    }
-    
-    // MOV [SI/DI/BX/BP], reg - Store to memory
-    if (dest.startsWith('[') && dest.endsWith(']')) {
-      const memReg = dest.substring(1, dest.length - 1);
-      const memRegMap = { SI: 4, DI: 5, BP: 6, BX: 7 };
-      
-      if (this.regMap16[src] !== undefined && memRegMap[memReg] !== undefined) {
-        // MOV [mem], reg16 - opcode 89
-        return [0x89, (this.regMap16[src] << 3) + memRegMap[memReg]];
-      }
-      
-      if (this.regMap8[src] !== undefined && memRegMap[memReg] !== undefined) {
-        // MOV [mem], reg8 - opcode 88
-        return [0x88, (this.regMap8[src] << 3) + memRegMap[memReg]];
-      }
-    }
 
     // MOV reg16, imm16
     if (this.regMap16[dest] !== undefined && (src.startsWith('0X') || /^\d+$/.test(src))) {
@@ -895,11 +954,40 @@ class Assembler {
       return [0x05, value & 0xFF, (value >> 8) & 0xFF];
     }
 
+    if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x04, value & 0xFF];
+    }
+
     if (this.regMap16[dest] !== undefined && this.regMap16[src] !== undefined) {
       return [0x01, 0xC0 + (this.regMap16[src] << 3) + this.regMap16[dest]];
     }
 
+    if (this.regMap8[dest] !== undefined && this.regMap8[src] !== undefined) {
+      return [0x00, 0xC0 + (this.regMap8[src] << 3) + this.regMap8[dest]];
+    }
+
     throw new Error(`Cannot assemble ADD ${dest}, ${src}`);
+  }
+
+  assembleADC(args) {
+    const [dest, src] = args;
+    
+    if (dest === 'AX' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x15, value & 0xFF, (value >> 8) & 0xFF];
+    }
+
+    if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x14, value & 0xFF];
+    }
+
+    if (this.regMap16[dest] !== undefined && this.regMap16[src] !== undefined) {
+      return [0x11, 0xC0 + (this.regMap16[src] << 3) + this.regMap16[dest]];
+    }
+
+    throw new Error(`Cannot assemble ADC ${dest}, ${src}`);
   }
 
   assembleSUB(args) {
@@ -910,11 +998,40 @@ class Assembler {
       return [0x2D, value & 0xFF, (value >> 8) & 0xFF];
     }
 
+    if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x2C, value & 0xFF];
+    }
+
     if (this.regMap16[dest] !== undefined && this.regMap16[src] !== undefined) {
       return [0x29, 0xC0 + (this.regMap16[src] << 3) + this.regMap16[dest]];
     }
 
+    if (this.regMap8[dest] !== undefined && this.regMap8[src] !== undefined) {
+      return [0x28, 0xC0 + (this.regMap8[src] << 3) + this.regMap8[dest]];
+    }
+
     throw new Error(`Cannot assemble SUB ${dest}, ${src}`);
+  }
+
+  assembleSBB(args) {
+    const [dest, src] = args;
+    
+    if (dest === 'AX' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x1D, value & 0xFF, (value >> 8) & 0xFF];
+    }
+
+    if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x1C, value & 0xFF];
+    }
+
+    if (this.regMap16[dest] !== undefined && this.regMap16[src] !== undefined) {
+      return [0x19, 0xC0 + (this.regMap16[src] << 3) + this.regMap16[dest]];
+    }
+
+    throw new Error(`Cannot assemble SBB ${dest}, ${src}`);
   }
 
   assembleCMP(args) {
@@ -925,6 +1042,12 @@ class Assembler {
       return [0x3D, value & 0xFF, (value >> 8) & 0xFF];
     }
 
+    if (dest === 'AL' && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x3C, value & 0xFF];
+    }
+
+    // CMP reg16, imm
     if (this.regMap16[dest] !== undefined && (src.startsWith('0X') || /^\d+$/.test(src))) {
       const value = this.parseNumber(src);
       if (value >= 0 && value <= 127) {
@@ -932,6 +1055,12 @@ class Assembler {
       } else {
         return [0x81, 0xF8 + this.regMap16[dest], value & 0xFF, (value >> 8) & 0xFF];
       }
+    }
+
+    // CMP reg8, imm
+    if (this.regMap8[dest] !== undefined && (src.startsWith('0X') || /^\d+$/.test(src))) {
+      const value = this.parseNumber(src);
+      return [0x80, 0xF8 + this.regMap8[dest], value & 0xFF];
     }
 
     if (this.regMap16[dest] !== undefined && this.regMap16[src] !== undefined) {
@@ -1041,9 +1170,6 @@ class Assembler {
     if (this.regMap16[reg] !== undefined) {
       return [0x40 + this.regMap16[reg]];
     }
-    if (this.regMap8[reg] !== undefined) {
-      return [0xFE, 0xC0 + this.regMap8[reg]];
-    }
     throw new Error(`Cannot assemble INC ${reg}`);
   }
 
@@ -1053,9 +1179,149 @@ class Assembler {
       return [0x48 + this.regMap16[reg]];
     }
     if (this.regMap8[reg] !== undefined) {
+      // DEC r8 uses opcode FE /1
       return [0xFE, 0xC8 + this.regMap8[reg]];
     }
     throw new Error(`Cannot assemble DEC ${reg}`);
+  }
+
+  assembleINC(args) {
+    const reg = args[0];
+    if (this.regMap16[reg] !== undefined) {
+      return [0x40 + this.regMap16[reg]];
+    }
+    if (this.regMap8[reg] !== undefined) {
+      // INC r8 uses opcode FE /0
+      return [0xFE, 0xC0 + this.regMap8[reg]];
+    }
+    throw new Error(`Cannot assemble INC ${reg}`);
+  }
+
+  assembleSHL(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xE0 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xE0 + this.regMap16[reg]];
+      }
+    }
+    if (this.regMap8[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD0, 0xE0 + this.regMap8[reg]];
+      } else if (count === 'CL') {
+        return [0xD2, 0xE0 + this.regMap8[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble SHL ${reg}, ${count}`);
+  }
+
+  assembleSHR(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xE8 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xE8 + this.regMap16[reg]];
+      }
+    }
+    if (this.regMap8[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD0, 0xE8 + this.regMap8[reg]];
+      } else if (count === 'CL') {
+        return [0xD2, 0xE8 + this.regMap8[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble SHR ${reg}, ${count}`);
+  }
+
+  assembleSAR(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xF8 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xF8 + this.regMap16[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble SAR ${reg}, ${count}`);
+  }
+
+  assembleROL(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xC0 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xC0 + this.regMap16[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble ROL ${reg}, ${count}`);
+  }
+
+  assembleROR(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xC8 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xC8 + this.regMap16[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble ROR ${reg}, ${count}`);
+  }
+
+  assembleRCL(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xD0 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xD0 + this.regMap16[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble RCL ${reg}, ${count}`);
+  }
+
+  assembleRCR(args) {
+    const reg = args[0];
+    const count = args.length > 1 ? args[1] : '1';
+    
+    if (this.regMap16[reg] !== undefined) {
+      if (count === '1') {
+        return [0xD1, 0xD8 + this.regMap16[reg]];
+      } else if (count === 'CL') {
+        return [0xD3, 0xD8 + this.regMap16[reg]];
+      }
+    }
+    throw new Error(`Cannot assemble RCR ${reg}, ${count}`);
+  }
+
+  assembleXCHG(args) {
+    const [reg1, reg2] = args;
+    if (reg1 === 'AX' && this.regMap16[reg2] !== undefined) {
+      return [0x90 + this.regMap16[reg2]];
+    }
+    if (reg2 === 'AX' && this.regMap16[reg1] !== undefined) {
+      return [0x90 + this.regMap16[reg1]];
+    }
+    // XCHG reg, reg
+    if (this.regMap16[reg1] !== undefined && this.regMap16[reg2] !== undefined) {
+      return [0x87, 0xC0 + (this.regMap16[reg1] << 3) + this.regMap16[reg2]];
+    }
+    throw new Error(`Cannot assemble XCHG ${reg1}, ${reg2}`);
   }
 
   assemblePUSH(args) {
@@ -1092,45 +1358,26 @@ class Assembler {
   }
 }
 
-// Initialize memory helper
-function initializeMemory(cpu) {
-  // Initialize source data at 0x1100
-  const sourceData = [
-    0x11, 0x11, 0x22, 0x22, 0x33, 0x33, 0x44, 0x44,
-    0x55, 0x55, 0x66, 0x66, 0x77, 0x77, 0x88, 0x88,
-    0x99, 0x99, 0xAA, 0xAA
-  ];
-  
-  for (let i = 0; i < sourceData.length; i++) {
-    cpu.memory[0x1100 + i] = sourceData[i];
-  }
-}
-
 // Main React Component
 export default function Emulator8086() {
-  const [code, setCode] = useState(`; Block Memory Transfer Example
-; Copies 10 words (20 bytes) from 1100H to 2100H
+  const [code, setCode] = useState(`; Multiplication Examples
+; Works with BOTH decimal and hexadecimal
 
-MOV SI, 0x1100   ; Source index = 1100H
-MOV DI, 0x2100   ; Destination index = 2100H
-MOV CL, 0x0A     ; Counter = 10 words
+; Example 1: Hexadecimal format
+MOV AX, 0x5      ; AX = 5 (hex format)
+MOV BX, 0x3      ; BX = 3 (hex format)
+MUL BX           ; AX = AX × BX = 15 (0x0F)
+MOV CX, AX       ; Store result in CX
 
-L:
-  MOV AX, [SI]   ; Load word from [DS:SI]
-  MOV [DI], AX   ; Store word to [ES:DI]
-  INC SI         ; Move to next word
-  INC SI         ; (2 bytes forward)
-  INC DI         ; Move to next word
-  INC DI         ; (2 bytes forward)
-  DEC CL         ; Decrease counter
-  JNZ L          ; Loop if CL ≠ 0
+; Example 2: Decimal format
+MOV AX, 5        ; AX = 5 (decimal format)
+MOV BX, 3        ; BX = 3 (decimal format)
+MUL BX           ; AX = AX × BX = 15
+MOV DX, AX       ; Store result in DX
 
 HLT              ; Stop execution
 
-; Memory View:
-; Source: 0000:1100-1113 (20 bytes)
-; Destination: 0000:2100-2113 (20 bytes)
-; After execution, data at 2100H = data at 1100H`);
+; Both examples produce AX = 000F (15 decimal)`);
   
   const [cpu, setCpu] = useState(() => new CPU8086());
   const [output, setOutput] = useState('');
@@ -1138,11 +1385,10 @@ HLT              ; Stop execution
   const [compiled, setCompiled] = useState(false);
   const [errors, setErrors] = useState([]);
   const [darkMode, setDarkMode] = useState(true);
-  const [memoryStart, setMemoryStart] = useState('0000:1100');
+  const [memoryStart, setMemoryStart] = useState('00000');
   const [currentLine, setCurrentLine] = useState(-1);
   const [addressToLine, setAddressToLine] = useState({});
-  const [executionSpeed, setExecutionSpeed] = useState(300);
-  const [stepCount, setStepCount] = useState(0);
+  const [executionSpeed, setExecutionSpeed] = useState(500);
   
   const runIntervalRef = useRef(null);
 
@@ -1159,11 +1405,6 @@ HLT              ; Stop execution
     }
 
     const newCpu = new CPU8086();
-    
-    // Initialize source memory with sample data
-    initializeMemory(newCpu);
-    
-    // Load program
     result.machineCode.forEach((byte, index) => {
       newCpu.memory[index] = byte;
     });
@@ -1173,8 +1414,7 @@ HLT              ; Stop execution
     setCurrentLine(result.addressToLine[0] !== undefined ? result.addressToLine[0] : -1);
     setCompiled(true);
     setErrors([]);
-    setOutput('✓ Compiled! Memory initialized with sample data at 1100H.\n');
-    setStepCount(0);
+    setOutput('');
   };
 
   const runProgram = () => {
@@ -1197,7 +1437,6 @@ HLT              ; Stop execution
           setTimeout(() => {
             stopProgram();
             setCurrentLine(-1);
-            setOutput(prev => prev + '\n✓ Program completed! Check memory at 2100H.');
           }, 0);
           return currentCpu;
         }
@@ -1209,8 +1448,6 @@ HLT              ; Stop execution
           setCurrentLine(lineNum);
         }
         
-        setStepCount(prev => prev + 1);
-        
         const result = currentCpu.step();
         
         if (result) {
@@ -1220,12 +1457,18 @@ HLT              ; Stop execution
             setTimeout(() => {
               stopProgram();
               setCurrentLine(-1);
-              setOutput(prev => prev + '\n✓ Program completed!');
             }, 0);
           } else if (result.type === 'error') {
             setErrors([{ line: 0, message: result.message }]);
             setTimeout(() => stopProgram(), 0);
           }
+        }
+        
+        if (currentCpu.halted) {
+          setTimeout(() => {
+            stopProgram();
+            setCurrentLine(-1);
+          }, 0);
         }
         
         const newCpu = new CPU8086();
@@ -1246,7 +1489,9 @@ HLT              ; Stop execution
   const step = () => {
     if (!compiled) {
       compile();
-      setTimeout(() => step(), 100);
+      setTimeout(() => {
+        step();
+      }, 100);
       return;
     }
     
@@ -1257,12 +1502,9 @@ HLT              ; Stop execution
       setCurrentLine(lineNum);
     }
     
-    setStepCount(prev => prev + 1);
-    
     setTimeout(() => {
       if (cpu.halted) {
         setCurrentLine(-1);
-        setOutput(prev => prev + '\n✓ Program halted.');
         return;
       }
       
@@ -1278,7 +1520,6 @@ HLT              ; Stop execution
       
       if (cpu.halted) {
         setCurrentLine(-1);
-        setOutput(prev => prev + '\n✓ Program halted.');
       }
       
       const newCpu = new CPU8086();
@@ -1296,7 +1537,6 @@ HLT              ; Stop execution
     setCurrentLine(-1);
     setAddressToLine({});
     setErrors([]);
-    setStepCount(0);
   };
 
   useEffect(() => {
@@ -1312,44 +1552,15 @@ HLT              ; Stop execution
   };
 
   const getMemoryView = () => {
-    let startAddr;
-    
-    if (memoryStart.includes(':')) {
-      const [seg, off] = memoryStart.split(':');
-      const segment = parseInt(seg, 16) || 0;
-      const offset = parseInt(off, 16) || 0;
-      startAddr = ((segment << 4) + offset) & 0xFFFFF;
-    } else {
-      startAddr = parseInt(memoryStart, 16) || 0;
-    }
-    
+    const start = parseInt(memoryStart, 16) || 0;
     const rows = [];
     for (let i = 0; i < 16; i++) {
-      const physAddr = (startAddr + (i * 16)) & 0xFFFFF;
-      const segment = (physAddr >> 4) & 0xFFFF;
-      const offset = physAddr & 0x0F;
-      
+      const addr = start + (i * 16);
       const bytes = [];
-      const ascii = [];
-      
       for (let j = 0; j < 16; j++) {
-        const byte = cpu.memory[physAddr + j] || 0;
-        bytes.push(formatHex(byte, 2));
-        
-        if (byte >= 32 && byte <= 126) {
-          ascii.push(String.fromCharCode(byte));
-        } else {
-          ascii.push('.');
-        }
+        bytes.push(formatHex(cpu.memory[addr + j] || 0, 2));
       }
-      
-      rows.push({ 
-        segment: formatHex(segment, 4),
-        offset: formatHex(offset, 4),
-        physAddr: formatHex(physAddr, 5), 
-        bytes,
-        ascii: ascii.join('')
-      });
+      rows.push({ addr: formatHex(addr, 5), bytes });
     }
     return rows;
   };
@@ -1360,19 +1571,14 @@ HLT              ; Stop execution
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-blue-500">Intel 8086 Emulator</h1>
-            <p className="text-sm text-gray-500">With Memory Addressing & Block Transfer Support</p>
+            <p className="text-sm text-gray-500">Step-by-Step Microprocessor Simulator</p>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
-            >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}>
-              <Info size={20} />
-            </button>
-          </div>
+          <button 
+            onClick={() => setDarkMode(!darkMode)}
+            className={`p-2 rounded ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
+          >
+            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
         </div>
       </div>
 
@@ -1385,7 +1591,7 @@ HLT              ; Stop execution
               <input
                 type="number"
                 value={executionSpeed}
-                onChange={(e) => setExecutionSpeed(Math.max(50, parseInt(e.target.value) || 300))}
+                onChange={(e) => setExecutionSpeed(Math.max(50, parseInt(e.target.value) || 500))}
                 className={`w-20 px-2 py-1 text-sm rounded ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'} border`}
                 min="50"
                 step="50"
@@ -1433,6 +1639,7 @@ HLT              ; Stop execution
                 darkMode ? 'bg-gray-900 text-green-400 border-gray-700' : 'bg-gray-50 text-gray-900 border-gray-300'
               } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
               spellCheck={false}
+              placeholder="Enter 8086 assembly code here..."
             />
           ) : (
             <div className={`w-full h-[500px] font-mono text-sm p-4 rounded overflow-auto ${
@@ -1466,7 +1673,7 @@ HLT              ; Stop execution
           
           {errors.length > 0 && (
             <div className="mt-4 p-4 bg-red-900 text-red-200 rounded border border-red-700">
-              <h3 className="font-bold mb-2">⚠ Errors:</h3>
+              <h3 className="font-bold mb-2">Errors:</h3>
               {errors.map((err, i) => (
                 <div key={i} className="text-sm">Line {err.line}: {err.message}</div>
               ))}
@@ -1502,22 +1709,7 @@ HLT              ; Stop execution
 
           <div className="grid grid-cols-2 gap-4">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
-              <h3 className="text-xs font-bold mb-2 pb-2 border-b border-blue-500">Index Registers</h3>
-              {[
-                ['SI', formatHex(cpu.SI)],
-                ['DI', formatHex(cpu.DI)],
-                ['BP', formatHex(cpu.BP)],
-                ['SP', formatHex(cpu.SP)]
-              ].map(([reg, val]) => (
-                <div key={reg} className="flex justify-between text-sm py-1 font-mono">
-                  <span className="font-semibold text-blue-400">{reg}</span>
-                  <span>{val}</span>
-                </div>
-              ))}
-            </div>
-            
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
-              <h3 className="text-xs font-bold mb-2 pb-2 border-b border-blue-500">Segments</h3>
+              <h3 className="text-xs font-bold mb-2 pb-2 border-b border-blue-500">Segment Registers</h3>
               {[
                 ['CS', formatHex(cpu.CS)],
                 ['DS', formatHex(cpu.DS)],
@@ -1530,15 +1722,31 @@ HLT              ; Stop execution
                 </div>
               ))}
             </div>
+            
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
+              <h3 className="text-xs font-bold mb-2 pb-2 border-b border-blue-500">Pointers</h3>
+              {[
+                ['IP', formatHex(cpu.IP)],
+                ['SP', formatHex(cpu.SP)],
+                ['BP', formatHex(cpu.BP)],
+                ['SI', formatHex(cpu.SI)],
+                ['DI', formatHex(cpu.DI)]
+              ].map(([ptr, val]) => (
+                <div key={ptr} className="flex justify-between text-sm py-1 font-mono">
+                  <span className="font-semibold text-blue-400">{ptr}</span>
+                  <span>{val}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
             <h3 className="text-sm font-bold mb-2 pb-2 border-b border-blue-500">FLAGS Register</h3>
             <div className="grid grid-cols-3 gap-2 text-xs">
               {Object.entries(cpu.flags).map(([flag, val]) => (
-                <div key={flag} className={`text-center p-2 rounded ${val === 1 ? 'bg-green-700' : 'bg-gray-700'}`}>
+                <div key={flag} className="text-center p-2 rounded bg-gray-700">
                   <div className="font-semibold text-gray-300">{flag}</div>
-                  <div className={`font-mono text-lg font-bold ${val === 1 ? 'text-green-300' : 'text-gray-500'}`}>
+                  <div className={`font-mono text-lg font-bold ${val === 1 ? 'text-green-400' : 'text-gray-500'}`}>
                     {val}
                   </div>
                 </div>
@@ -1549,44 +1757,38 @@ HLT              ; Stop execution
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold">Memory Viewer</h3>
-              <input
-                type="text"
-                value={memoryStart}
-                onChange={(e) => setMemoryStart(e.target.value.toUpperCase())}
-                className={`w-28 px-2 py-1 text-xs font-mono rounded ${
-                  darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'
-                } border`}
-                placeholder="0000:1100"
-              />
-            </div>
-            <div className="text-xs text-gray-500 mb-2">
-              Quick View: 
-              <button onClick={() => setMemoryStart('0000:1100')} className="ml-2 text-blue-400 hover:underline">Source</button>
-              <button onClick={() => setMemoryStart('0000:2100')} className="ml-2 text-blue-400 hover:underline">Dest</button>
-            </div>
-            <div className="font-mono text-xs max-h-80 overflow-y-auto">
-              <div className="flex gap-1 text-gray-500 sticky top-0 bg-gray-800 pb-1 mb-1 border-b border-gray-700">
-                <span className="w-24">Seg:Off</span>
-                <span className="flex-1">Hex Bytes</span>
-                <span className="w-20">ASCII</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">Address:</span>
+                <input
+                  type="text"
+                  value={memoryStart}
+                  onChange={(e) => setMemoryStart(e.target.value.toUpperCase())}
+                  className={`w-24 px-2 py-1 text-xs font-mono rounded ${
+                    darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'
+                  } border`}
+                  placeholder="00000"
+                  maxLength={5}
+                />
               </div>
-              
-              {getMemoryView().map((row, idx) => (
-                <div key={idx} className="flex gap-1 py-0.5 hover:bg-gray-700">
-                  <span className="text-yellow-500 w-24">{row.segment}:{row.offset}</span>
-                  <div className="flex-1 flex gap-1">
-                    {row.bytes.map((byte, i) => (
-                      <span 
-                        key={i} 
-                        className={`w-5 text-center ${
-                          byte !== '00' ? 'text-green-400 font-semibold' : 'text-gray-600'
-                        }`}
-                      >
-                        {byte}
-                      </span>
-                    ))}
-                  </div>
-                  <span className="w-20 text-blue-400">{row.ascii}</span>
+            </div>
+            <div className="font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
+              <div className="flex gap-1 text-gray-500 sticky top-0 bg-gray-800 pb-1">
+                <span className="w-16">Addr</span>
+                {[...Array(16)].map((_, i) => (
+                  <span key={i} className="w-6 text-center">{formatHex(i, 2)}</span>
+                ))}
+              </div>
+              {getMemoryView().map(row => (
+                <div key={row.addr} className="flex gap-1">
+                  <span className="text-yellow-500 w-16">{row.addr}</span>
+                  {row.bytes.map((byte, i) => (
+                    <span 
+                      key={i} 
+                      className={`w-6 text-center ${byte !== '00' ? 'text-green-400 font-semibold' : 'text-gray-600'}`}
+                    >
+                      {byte}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
@@ -1596,7 +1798,7 @@ HLT              ; Stop execution
 
       <div className={`mx-4 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-4`}>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold">Program Output & Status</h3>
+          <h3 className="text-sm font-semibold">Program Output</h3>
           <button
             onClick={() => setOutput('')}
             className="text-xs px-3 py-1 bg-gray-700 rounded hover:bg-gray-600"
@@ -1604,7 +1806,7 @@ HLT              ; Stop execution
             Clear
           </button>
         </div>
-        <div className={`font-mono text-sm p-4 rounded min-h-24 overflow-y-auto ${
+        <div className={`font-mono text-sm p-4 rounded min-h-24 max-h-48 overflow-y-auto ${
           darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-300'
         } border`}>
           {output ? (
@@ -1625,28 +1827,18 @@ HLT              ; Stop execution
                 cpu.halted ? 'text-red-400' : 
                 compiled ? 'text-yellow-400' : 'text-gray-400'
               }`}>
-                {running ? '▶ RUNNING' : cpu.halted ? '■ HALTED' : compiled ? '● READY' : '○ NOT COMPILED'}
+                {running ? 'RUNNING' : cpu.halted ? 'HALTED' : compiled ? 'READY' : 'NOT COMPILED'}
               </span>
             </div>
             <div>
-              <span className="text-gray-500">Steps: </span>
-              <span className="font-mono text-blue-400">{stepCount}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">IP: </span>
-              <span className="font-mono text-blue-400">{formatHex(cpu.IP)}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">SI: </span>
-              <span className="font-mono text-blue-400">{formatHex(cpu.SI)}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">DI: </span>
-              <span className="font-mono text-blue-400">{formatHex(cpu.DI)}</span>
+              <span className="text-gray-500">Physical Address: </span>
+              <span className="font-mono text-blue-400">
+                {formatHex(((cpu.CS << 4) + cpu.IP) & 0xFFFFF, 5)}
+              </span>
             </div>
           </div>
           <div className="text-xs text-gray-500">
-            Intel 8086 Emulator v3.0 - Memory Addressing
+            Intel 8086 - 16-bit Microprocessor Emulator
           </div>
         </div>
       </div>

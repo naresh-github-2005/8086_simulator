@@ -1,0 +1,20 @@
+; Find smallest of three numbers
+
+start:
+  MOV AX, 15           ; First number
+  MOV BX, 23           ; Second number
+  MOV CX, 67           ; Third number
+  
+  ; Compare AX and BX
+  CMP AX, BX
+  JL check_third       ; If AX < BX, go check third
+  MOV AX, BX           ; BX is smaller, move to AX
+  
+check_third:
+  CMP AX, CX           ; Compare with third
+  JL done              ; If AX < CX, done
+  MOV AX, CX           ; CX is smallest
+  
+done:
+  ; Smallest in AX
+  HLT
