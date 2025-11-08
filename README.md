@@ -1,70 +1,115 @@
-# Getting Started with Create React App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+# 8086 Emulator / Simulator (React + JavaScript)
 
-## Available Scripts
+A small 8086 CPU emulator/simulator implemented as a React single-page app.
+This repository contains the front-end UI, example assembly programs, and memory/CPU emulation code written in JavaScript.
 
-In the project directory, you can run:
+This README describes how to run the project locally, the code layout, and how to add or run example programs.
 
-### `npm start`
+## Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Simple 8086 instruction stepping and memory inspection (implemented in JS files under `src/`).
+- Example programs in `src/examples/` (AddSub, Fibonacci, MultiDivi, Average, etc.).
+- A minimal React UI to load, run, and inspect programs in the browser.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Prerequisites
 
-### `npm test`
+- Node.js (16+ recommended) and npm installed.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+On Windows PowerShell, verify with:
 
-### `npm run build`
+```powershell
+node -v
+npm -v
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Install
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Clone the repo and install dependencies:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```powershell
+# from the repo root
+npm install
+```
 
-### `npm run eject`
+## Run (development)
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Start the dev server (Create React App):
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```powershell
+npm start
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Open http://localhost:3000 in your browser. The app will hot-reload on change.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Build (production)
 
-## Learn More
+Create an optimized production build:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```powershell
+npm run build
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+The build output will be placed in the `build/` folder.
 
-### Code Splitting
+## Tests
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Run the unit tests (CRA/jest):
 
-### Analyzing the Bundle Size
+```powershell
+npm test
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+There is a basic test harness in `src/App.test.js` created by Create React App.
 
-### Making a Progressive Web App
+## Project layout
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+- `public/` — static HTML and metadata.
+- `src/` — main application source code.
+	- `App.js` — main React app component.
+	- `index.js` — React entrypoint.
+	- `memory0000-1000code.js`, `normalMemory.js` — memory-related emulator code.
+	- `DEC_ISSUE.js`, `decimal_Hex_issue`, `EG1.js`, `EG2.js`, `EG3_loopError_cmpError.js`, `EG4_Factotial_llop_error.js` — example/emulation code and experiments.
+	- `examples/` — plain text example programs you can load into the emulator.
 
-### Advanced Configuration
+## Using the examples
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+The `src/examples/` directory contains several text files with simple programs (Add/Sub, Fibonacci, etc.). Open the app in the browser and use the UI to load an example, then step through instructions or run until completion.
 
-### Deployment
+If you want to add a new example, place a `.txt` program file in `src/examples/` and update any UI lists (if applicable) to surface the new example.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## Development notes
 
-### `npm run build` fails to minify
+- The emulator is implemented in plain JavaScript for clarity; expect opportunity to refactor into a cleaner architecture (separate CPU, memory, and UI layers).
+- If you add features (breakpoints, registers view, full assembler), prefer small PRs with one feature at a time.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Contributing
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feat/my-feature`.
+3. Make changes and add tests where appropriate.
+4. Open a pull request describing your change.
+
+Please keep changes small and focused.
+
+## Known issues
+
+- This project started from a Create React App template; the emulator code and examples are exploratory and may contain logic or formatting bugs.
+- Some example files are named with typos (e.g., `EG4_Factotial_llop_error.js`) — renaming is safe but please preserve history or open an issue first.
+
+## License
+
+This project does not include a license file. Add a `LICENSE` if you want to specify reuse terms (e.g., MIT).
+
+## Contact
+
+For questions or help, open an issue in this repository.
+
+---
+
+Note: If you'd like, I can also:
+
+- Add a short demo GIF or screenshot to the README.
+- Add basic instructions in the app UI to load example programs.
+- Create a CONTRIBUTING.md and LICENSE file.
+
